@@ -1,0 +1,27 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Make {
+  id           Int           @id @default(autoincrement())
+  makeId       String        @unique
+  makeName     String
+  vehicleTypes VehicleType[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model VehicleType {
+  id       Int    @id @default(autoincrement())
+  typeId   String
+  typeName String
+  makeId   String
+  make     Make   @relation(fields: [makeId], references: [makeId], onDelete: Cascade)
+
+  @@unique([makeId, typeId])
+}
