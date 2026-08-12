@@ -1,0 +1,19 @@
+services:
+  api:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: file:/data/prod.db
+      LOG_LEVEL: info
+      INGEST_ON_BOOT: "true"
+      INGEST_MAKE_LIMIT: "50"
+      INGEST_CONCURRENCY: "10"
+      NHTSA_BASE_URL: https://vpic.nhtsa.dot.gov/api/vehicles
+    volumes:
+      - sqlite_data:/data
+
+volumes:
+  sqlite_data:
