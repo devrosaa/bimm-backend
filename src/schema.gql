@@ -1,0 +1,19 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type Make {
+  makeId: String!
+  makeName: String!
+  vehicleTypes: [VehicleType!]!
+}
+
+type Query {
+  make(makeId: String!): Make
+  makes(makeId: String, makeName: String): [Make!]!
+}
+
+type VehicleType {
+  typeId: String!
+  typeName: String!
+}
