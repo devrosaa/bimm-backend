@@ -19,6 +19,7 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec prisma generate
+      - run: pnpm lint
       - run: pnpm test
       - run: pnpm run build
       - run: docker build -t bimm-backend:ci .
