@@ -11,6 +11,14 @@ pnpm exec prisma migrate dev
 pnpm run start:dev
 ```
 
+From a clean install, these should all succeed:
+
+```bash
+pnpm test
+pnpm run build
+pnpm lint
+```
+
 GraphQL: http://localhost:3000/graphql
 
 Manual ingest:
@@ -25,7 +33,7 @@ curl -X POST http://localhost:3000/admin/ingest
 docker compose up --build
 ```
 
-Runs migrations on boot. SQLite lives in the `sqlite_data` volume on port `3000`.
+Runs migrations on boot. SQLite lives in the `sqlite_data` volume on port `3000`. Default ingest loads the full NHTSA dataset (`INGEST_MAKE_LIMIT=0`).
 
 ## Env vars
 
@@ -36,11 +44,15 @@ Runs migrations on boot. SQLite lives in the `sqlite_data` volume on port `3000`
 | `DATABASE_URL` | required | Prisma SQLite URL, e.g. `file:./dev.db` |
 | `LOG_LEVEL` | `info` | Pino log level |
 | `NHTSA_BASE_URL` | `https://vpic.nhtsa.dot.gov/api/vehicles` | NHTSA API base |
+| `NHTSA_TIMEOUT_MS` | `15000` | Per-request timeout |
+| `NHTSA_RETRY_COUNT` | `2` | Extra retries after the first attempt |
 | `INGEST_CONCURRENCY` | `10` | Parallel vehicle-type fetches |
 | `INGEST_MAKE_LIMIT` | `0` | Cap makes during ingest (`0` = all) |
 | `INGEST_ON_BOOT` | `false` | Ingest when the DB is empty at startup |
 
 Config is validated with Zod on boot.
+
+For a short demo, set `INGEST_MAKE_LIMIT=25`. A full crawl is about 12k makes and takes several minutes.
 
 ## Data model
 
@@ -75,16 +87,18 @@ type Make {
 }
 
 type Query {
-  makes(makeId: String, makeName: String): [Make!]!
+  makes(makeId: String, makeName: String, limit: Int = 50, offset: Int = 0): [Make!]!
   make(makeId: String!): Make
 }
 ```
 
+`limit` defaults to 50 and is capped at 200.
+
 ### Examples
 
 ```graphql
-query AllMakes {
-  makes {
+query FirstPage {
+  makes(limit: 50, offset: 0) {
     makeId
     makeName
     vehicleTypes {
@@ -97,7 +111,7 @@ query AllMakes {
 
 ```graphql
 query SearchMakes {
-  makes(makeName: "TESLA") {
+  makes(makeName: "TESLA", limit: 20) {
     makeId
     makeName
     vehicleTypes {
@@ -123,28 +137,28 @@ query OneMake {
 
 ## Ingestion
 
-1. Fetch `getallmakes?format=XML`
+1. Fetch `getallmakes?format=XML` (timeout + retries)
 2. Parse to `{ makeId, makeName }[]`
-3. Optionally truncate with `INGEST_MAKE_LIMIT`
-4. Fetch `GetVehicleTypesForMakeId/{makeId}?format=xml` with concurrency
-5. Combine make + types
-6. Wipe + rewrite rows in a transaction
-
-If vehicle types fail for one make, that make is stored with an empty list and the run continues.
-
-For local work, keep `INGEST_MAKE_LIMIT` small. Full NHTSA is huge.
+3. If `INGEST_MAKE_LIMIT` is greater than 0, slice to that many makes; `0` means the full dataset
+4. Fetch `GetVehicleTypesForMakeId/{makeId}?format=xml` with concurrency, timeout, and retries
+5. Upsert successful makes and replace only those makes' vehicle types
+6. Skip makes whose vehicle-type request still fails; existing rows for those makes stay as they are
+7. If the all-makes request fails, ingestion aborts and the database is not written
 
 ## Errors
 
-- Network: `NhtsaNetworkError`
+- Network, timeout, and 5xx/429: retried, then `NhtsaNetworkError`
+- 4xx (other than 429): fail immediately, no retry
 - Bad XML: `XmlParseError`
 - Bad payload shape: `TransformError`
+- Failed vehicle-type fetches: skipped; valid stored data is not overwritten with empty types
+- Failed all-makes fetch: abort, no persist
 - DB write failures: logged and rethrown
 - Bad config: process exits before listen
 
 ## Logging
 
-JSON logs through nestjs-pino. Pretty print in development. Covers startup, request/ingest failures, and unexpected errors.
+JSON logs through nestjs-pino. Pretty print in development. Covers startup, retries, ingest skips, request failures, and unexpected errors.
 
 ## Scripts
 
@@ -154,4 +168,5 @@ JSON logs through nestjs-pino. Pretty print in development. Covers startup, requ
 | `pnpm run build` | Compile to `dist/` |
 | `pnpm run start:prod` | Run compiled app |
 | `pnpm test` | Unit tests |
+| `pnpm lint` | Lint without mutating files |
 | `pnpm exec prisma migrate dev` | Local migrations |
