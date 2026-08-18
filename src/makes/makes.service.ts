@@ -3,6 +3,9 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { Make } from './models/make.model';
 
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 200;
+
 @Injectable()
 export class MakesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -10,6 +13,8 @@ export class MakesService {
   async findAll(filters?: {
     makeId?: string;
     makeName?: string;
+    limit?: number;
+    offset?: number;
   }): Promise<Make[]> {
     const where: Prisma.MakeWhereInput = {};
 
@@ -23,10 +28,15 @@ export class MakesService {
       };
     }
 
+    const take = this.clampLimit(filters?.limit);
+    const skip = Math.max(0, filters?.offset ?? 0);
+
     const rows = await this.prisma.make.findMany({
       where,
       include: { vehicleTypes: true },
       orderBy: { makeName: 'asc' },
+      take,
+      skip,
     });
 
     return rows.map((row) => ({
@@ -57,5 +67,12 @@ export class MakesService {
         typeName: type.typeName,
       })),
     };
+  }
+
+  private clampLimit(limit?: number): number {
+    if (limit == null || Number.isNaN(limit)) {
+      return DEFAULT_LIMIT;
+    }
+    return Math.min(MAX_LIMIT, Math.max(1, Math.floor(limit)));
   }
 }

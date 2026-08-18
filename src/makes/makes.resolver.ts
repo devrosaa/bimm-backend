@@ -1,4 +1,4 @@
-import { Args, Query, Resolver } from '@nestjs/graphql';
+import { Args, Int, Query, Resolver } from '@nestjs/graphql';
 import { Make } from './models/make.model';
 import { MakesService } from './makes.service';
 
@@ -10,8 +10,10 @@ export class MakesResolver {
   makes(
     @Args('makeId', { type: () => String, nullable: true }) makeId?: string,
     @Args('makeName', { type: () => String, nullable: true }) makeName?: string,
+    @Args('limit', { type: () => Int, defaultValue: 50 }) limit?: number,
+    @Args('offset', { type: () => Int, defaultValue: 0 }) offset?: number,
   ): Promise<Make[]> {
-    return this.makesService.findAll({ makeId, makeName });
+    return this.makesService.findAll({ makeId, makeName, limit, offset });
   }
 
   @Query(() => Make, { name: 'make', nullable: true })

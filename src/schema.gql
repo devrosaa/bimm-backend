@@ -10,7 +10,7 @@ type Make {
 
 type Query {
   make(makeId: String!): Make
-  makes(makeId: String, makeName: String): [Make!]!
+  makes(limit: Int = 50, makeId: String, makeName: String, offset: Int = 0): [Make!]!
 }
 
 type VehicleType {
