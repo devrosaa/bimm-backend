@@ -9,8 +9,10 @@ services:
       DATABASE_URL: file:/data/prod.db
       LOG_LEVEL: info
       INGEST_ON_BOOT: "true"
-      INGEST_MAKE_LIMIT: "50"
+      INGEST_MAKE_LIMIT: "0"
       INGEST_CONCURRENCY: "10"
+      NHTSA_TIMEOUT_MS: "15000"
+      NHTSA_RETRY_COUNT: "2"
       NHTSA_BASE_URL: https://vpic.nhtsa.dot.gov/api/vehicles
     volumes:
       - sqlite_data:/data
