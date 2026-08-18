@@ -30,7 +30,10 @@ export class IngestionService implements OnModuleInit {
 
     const count = await this.prisma.make.count();
     if (count > 0) {
-      this.logger.info({ count }, 'Skipping boot ingest; database already seeded');
+      this.logger.info(
+        { count },
+        'Skipping boot ingest; database already seeded',
+      );
       return;
     }
 
@@ -41,7 +44,11 @@ export class IngestionService implements OnModuleInit {
     }
   }
 
-  async ingest(): Promise<{ makes: number; vehicleTypes: number }> {
+  async ingest(): Promise<{
+    makes: number;
+    vehicleTypes: number;
+    skipped: number;
+  }> {
     if (this.running) {
       throw new Error('Ingestion already in progress');
     }
@@ -58,19 +65,20 @@ export class IngestionService implements OnModuleInit {
         makes = makes.slice(0, this.config.INGEST_MAKE_LIMIT);
       }
 
-      const combined = await this.fetchVehicleTypesForMakes(makes);
+      const { combined, skipped } = await this.fetchVehicleTypesForMakes(makes);
       const vehicleTypes = await this.persist(combined);
 
       this.logger.info(
         {
           makes: combined.length,
+          skipped,
           vehicleTypes,
           durationMs: Date.now() - startedAt,
         },
         'Ingestion completed',
       );
 
-      return { makes: combined.length, vehicleTypes };
+      return { makes: combined.length, vehicleTypes, skipped };
     } catch (error) {
       this.logger.error({ err: error }, 'Ingestion failed');
       throw error;
@@ -81,13 +89,14 @@ export class IngestionService implements OnModuleInit {
 
   private async fetchVehicleTypesForMakes(
     makes: Array<{ makeId: string; makeName: string }>,
-  ): Promise<MakeDto[]> {
+  ): Promise<{ combined: MakeDto[]; skipped: number }> {
     const concurrency = this.config.INGEST_CONCURRENCY;
     const results: MakeDto[] = [];
+    let skipped = 0;
     let index = 0;
 
     const workers = Array.from(
-      { length: Math.min(concurrency, makes.length) },
+      { length: Math.min(concurrency, makes.length) || 0 },
       async () => {
         while (index < makes.length) {
           const current = makes[index++];
@@ -98,18 +107,18 @@ export class IngestionService implements OnModuleInit {
             const vehicleTypes = parseVehicleTypesXml(xml);
             results.push(combineMakeWithTypes(current, vehicleTypes));
           } catch (error) {
+            skipped += 1;
             this.logger.warn(
               { err: error, makeId: current.makeId },
-              'Failed to load vehicle types for make; storing make with empty types',
+              'Failed to load vehicle types for make; leaving existing data unchanged',
             );
-            results.push(combineMakeWithTypes(current, []));
           }
         }
       },
     );
 
     await Promise.all(workers);
-    return results;
+    return { combined: results, skipped };
   }
 
   private async persist(makes: MakeDto[]): Promise<number> {
@@ -117,22 +126,29 @@ export class IngestionService implements OnModuleInit {
 
     try {
       await this.prisma.$transaction(async (tx) => {
-        await tx.vehicleType.deleteMany();
-        await tx.make.deleteMany();
-
         for (const make of makes) {
-          await tx.make.create({
-            data: {
+          await tx.make.upsert({
+            where: { makeId: make.makeId },
+            create: {
               makeId: make.makeId,
               makeName: make.makeName,
-              vehicleTypes: {
-                create: make.vehicleTypes.map((type) => ({
-                  typeId: type.typeId,
-                  typeName: type.typeName,
-                })),
-              },
+            },
+            update: {
+              makeName: make.makeName,
             },
           });
+          await tx.vehicleType.deleteMany({
+            where: { makeId: make.makeId },
+          });
+          if (make.vehicleTypes.length > 0) {
+            await tx.vehicleType.createMany({
+              data: make.vehicleTypes.map((type) => ({
+                makeId: make.makeId,
+                typeId: type.typeId,
+                typeName: type.typeName,
+              })),
+            });
+          }
           vehicleTypeCount += make.vehicleTypes.length;
         }
       });

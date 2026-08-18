@@ -13,13 +13,24 @@ describe('loadConfig', () => {
       INGEST_CONCURRENCY: '5',
       INGEST_MAKE_LIMIT: '10',
       INGEST_ON_BOOT: 'true',
+      NHTSA_TIMEOUT_MS: '8000',
+      NHTSA_RETRY_COUNT: '3',
     });
 
     expect(config.PORT).toBe(4000);
     expect(config.INGEST_CONCURRENCY).toBe(5);
     expect(config.INGEST_MAKE_LIMIT).toBe(10);
     expect(config.INGEST_ON_BOOT).toBe(true);
+    expect(config.NHTSA_TIMEOUT_MS).toBe(8000);
+    expect(config.NHTSA_RETRY_COUNT).toBe(3);
     expect(config.NODE_ENV).toBe('development');
+  });
+
+  it('defaults ingest limit to all makes', () => {
+    const config = loadConfig(base);
+    expect(config.INGEST_MAKE_LIMIT).toBe(0);
+    expect(config.NHTSA_TIMEOUT_MS).toBe(15000);
+    expect(config.NHTSA_RETRY_COUNT).toBe(2);
   });
 
   it('fails fast on missing database url', () => {

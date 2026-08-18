@@ -13,6 +13,8 @@ const envSchema = z.object({
     .string()
     .url()
     .default('https://vpic.nhtsa.dot.gov/api/vehicles'),
+  NHTSA_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+  NHTSA_RETRY_COUNT: z.coerce.number().int().nonnegative().default(2),
   INGEST_CONCURRENCY: z.coerce.number().int().positive().default(10),
   INGEST_MAKE_LIMIT: z.coerce.number().int().nonnegative().default(0),
   INGEST_ON_BOOT: z
